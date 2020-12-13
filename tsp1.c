@@ -43,7 +43,6 @@ void free_map_dot(Map m);
 City *load_cities(const char *filename, int *n);
 
 Answer solve(City *city, int n,  int m, int route[m][n]);
-void swap(int *list, int i, int j);
 double total_distance(City *city, int *route, int n);
 Answer hillclimb(City *city, int n, int *route);
 void init_random_route(int *route, int n);
@@ -89,20 +88,21 @@ int main(int argc, char **argv)
     const int width = 70;
     const int height = 40;
     const int max_cities = 100;
-    const int random_route_number = 10;
-
     Map map = init_map(width, height);
 
     FILE *fp = stdout;
-    if (argc != 2)
+    if (argc != 3)
     {
-        fprintf(stderr, "Usage: %s <city file>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <city file><number of random solutions>\n", argv[0]);
         exit(1);
     }
-    int n;
 
+    int n;
     City *city = load_cities(argv[1], &n);
     assert(n > 1 && n <= max_cities);
+
+    const int random_route_number = atoi(argv[2]);
+    assert(random_route_number > 0);
 
     plot_cities(fp, map, city, n, NULL);
     sleep(1);
@@ -202,7 +202,6 @@ Answer solve(City *city, int n, int m, int route[m][n])
             copy_list(ans.route, route[i], n);
         }
     }
-
     return ans;
 }
 
@@ -210,7 +209,7 @@ void init_random_route(int *route, int n)
 {
     int count = 0;
     int random;
-    //srand(time(NULL));
+    srand(time(NULL));
     while (count < n)
     {
         label :
@@ -221,19 +220,6 @@ void init_random_route(int *route, int n)
         route[count] = random;
         count++;
     }
-    for (int i=0; i<count; ++i)
-        printf("%d ", route[i]);
-
-    printf("\n");
-}
-
-void swap(int *list, int i, int j)
-{
-    int *tmp;
-
-    *tmp = list[i];
-    list[i] = list[j];
-    list[j] = *tmp;
 }
 
 void copy_list(int *list1, int *list2, int n)
@@ -249,7 +235,6 @@ double total_distance(City *city, int *route, int n)
     for(int i=1; i<n; ++i)
         total += distance(city[route[i]], city[route[i-1]]);
     total += distance(city[route[0]], city[route[n-1]]);
-    printf("%f\n", total);
 
     return total;
 }
@@ -258,15 +243,15 @@ Answer hillclimb(City *city, int n, int *route)
 {
     double distance = total_distance(city, route, n);
     Answer *ans = malloc(sizeof(int) * n + sizeof(double));
+    int temp;
     ans->distance = 1.0E5;
     ans->route = (int *)malloc(sizeof(int) * n);
     for (int i=1; i<n-1; ++i)
         for (int j=i+1; j<n; ++j)
         {
-            swap(route, i, j);
-            for (int k=0; k<n; ++k)
-                printf("%d ", route[k]);
-            printf("\n");
+            temp = route[i];
+            route[i] = route[j];
+            route[j] = temp;
             distance = total_distance(city, route, n);
             if (distance < ans->distance)
             {

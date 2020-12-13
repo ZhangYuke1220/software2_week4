@@ -4,16 +4,14 @@
 #include <math.h>
 #include <assert.h>
 #include <unistd.h>
-#include <errno.h> // strtol のエラー判定用
+#include <errno.h>
 
-// 町の構造体（今回は2次元座標）を定義
 typedef struct
 {
     int x;
     int y;
 } City;
 
-// 描画用
 typedef struct
 {
     int width;
@@ -21,18 +19,10 @@ typedef struct
     char **dot;
 } Map;
 
-// 整数最大値をとる関数
 int max(const int a, const int b)
 {
     return (a > b) ? a : b;
 }
-
-// プロトタイプ宣言
-// draw_line: 町の間を線で結ぶ
-// draw_route: routeでの巡回順を元に移動経路を線で結ぶ
-// plot_cities: 描画する
-// distance: 2地点間の距離を計算
-// solve(): TSPをといて距離を返す/ 引数route に巡回順を格納
 
 void draw_line(Map map, City a, City b);
 void draw_route(Map map, City *city, int n, const int *route);
@@ -52,6 +42,7 @@ Map init_map(const int width, const int height)
         dot[i] = tmp + i * height;
     return (Map){.width = width, .height = height, .dot = dot};
 }
+
 void free_map_dot(Map m)
 {
     free(m.dot[0]);
@@ -77,9 +68,9 @@ City *load_cities(const char *filename, int *n)
     fclose(fp);
     return city;
 }
+
 int main(int argc, char **argv)
 {
-    // const による定数定義
     const int width = 70;
     const int height = 40;
     const int max_cities = 100;
@@ -189,7 +180,7 @@ double distance(City a, City b)
     return sqrt(dx * dx + dy * dy);
 }
 
-double solve(const City *city, int n, int *route, int *visited)
+/*double solve(const City *city, int n, int *route, int *visited)
 {
     // 以下はとりあえずダミー。ここに探索プログラムを実装する
     // 現状は町の番号順のルートを回っているだけ
@@ -212,8 +203,93 @@ double solve(const City *city, int n, int *route, int *visited)
         sum_d += distance(city[c0], city[c1]);
     }
     return sum_d;
+}*/
+
+typedef struct ans
+{
+    double dist;
+    int *route;
+} Answer;
+
+Answer search(const City *city, int n, int *route, int *visited);
+
+double solve(const City *city, int n, int *route, int *visited)
+{
+    route[0] = 0; // 循環した結果を避けるため、常に0番目からスタート
+    visited[0] = 1;
+
+    Answer ans = search(city, n, route, visited);
+
+    memcpy(route, ans.route, sizeof(int) * n);
+    free(ans.route);
+    return ans.dist;
 }
 
-int *permutation_route(int *list)
+Answer search(const City *city, int n, int *route, int *visited)
 {
+    static double mindis = 10000000000;
+    int start = 0;
+    double cum_dis = 0;
+    // 訪問した個数を数える
+    int c0 = route[0];
+    for (int i = 1; i < n; i++)
+    {
+        if (!route[i])
+        {
+            start = i;
+            break;
+        }
+        else
+        {
+            int c1 = route[i];
+            cum_dis += distance(city[c0], city[c1]);
+            c0 = c1;
+        }
+    }
+    // 全て訪問したケース（ここが再帰の終端条件）
+    if (start == 0)
+    {
+        double sum_d = cum_dis + distance(city[c0], city[0]);
+        int *retarg = (int *)malloc(sizeof(int) * n);
+        memcpy(retarg, route, sizeof(int) * n);
+        if (sum_d < mindis)
+            mindis = sum_d;
+        return (Answer){.dist = sum_d, .route = retarg};
+    }
+
+    // 特定の分岐における最小の巡回経路を調べる
+    Answer min = {.dist = 10000000000, .route = NULL};
+    for (int i = 1; i < n; i++)
+    {
+        // 未訪問なら訪れる
+        if (!visited[i])
+        {
+            if (i == 2 && !visited[1])
+                continue; // 逆順の巡回経路を抑制
+
+            if (cum_dis + distance(city[route[start - 1]], city[i]) > mindis)
+                continue;
+
+            route[start] = i;
+            visited[i] = 1;
+
+            Answer tmp = search(city, n, route, visited);
+
+            // 最小の巡回経路かどうか確認
+            if (tmp.dist < min.dist)
+            {
+                free(min.route);
+                min = tmp;
+            }
+            else
+            {
+                free(tmp.route);
+            }
+
+            route[start] = 0;
+            visited[i] = 0;
+        }
+    }
+
+    return min;
 }

@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
-#include <errno.h>
+#include <errno.h> 
 
 typedef struct item
 {
@@ -14,16 +14,15 @@ typedef struct itemset
 {
     int number;
     Item *item;
-    unsigned char *flag;
 } Itemset;
 
 Itemset *init_itemset(int number, int seed);
 void free_itemset(Itemset *list);
 Itemset *load_itemset(char *filename);
 void print_itemset(const Itemset *list);
-void save_itemset(char *filename);
-double solve(Itemset *list, double capacity);
-double search(int index, Itemset *list, double capacity, double sum_v, double sum_w);
+
+double solve(const Itemset *list, double capacity);
+double search(int index, const Itemset *list, double capacity, unsigned char *flags, double sum_v, double sum_w);
 int load_int(const char *argvalue);
 double load_double(const char *argvalue);
 
@@ -65,35 +64,66 @@ double load_double(const char *argvalue)
     return ret;
 }
 
+Itemset *load_itemset(char *filename)
+{
+    Itemset *itemset = NULL;
+    Item *items = NULL;
+    FILE *fp = NULL;
+    int n = 0;
+    if ((fp = fopen(filename, "rb")) == NULL)
+    {
+        fprintf(stderr, "%s: cannot open file.\n", filename);
+        exit(1);
+    }
+
+    fread(&n, sizeof(int), 1, fp);
+    assert(n > 0);
+    itemset = (Itemset *)malloc(sizeof(Itemset));
+    items = (Item *)malloc(sizeof(Item) * n);
+
+    for (int i = 0; i < n; i++)
+    {
+        fread(&items[i].value, sizeof(double), 1, fp);
+        fread(&items[i].weight, sizeof(double), 1, fp);
+    }
+    *itemset = (Itemset){.number = n, .item = items};
+    fclose(fp);
+
+    return itemset;
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 3)
     {
-        fprintf(stderr, "usage: %s <the number of items (int)> <max capacity (double)>\n", argv[0]);
+        fprintf(stderr, "usage: %s <filename><number>\n", argv[0]);
         exit(1);
     }
 
     const int max_items = 100;
+    Itemset *items = load_itemset(argv[1]);
+    const double max_weight = atof(argv[2]);
+    const int n = items->number;
+    assert(n <= max_items); 
+    assert(max_weight >= 0);
 
-    const int n = load_int(argv[1]);
-    assert(n <= max_items);
+    double check_value = 0;
+    double check_weight = 0;
+    for (int i=0; i<n; ++i)
+    {
+        check_value = items->item[i].value;
+        check_weight = items->item[i].weight;
+        assert(check_value >= 0.0);
+        assert(check_weight >= 0.0);
+    }
 
-    const double W = load_double(argv[2]);
-    assert(W >= 0.0);
-
-    printf("max capacity: W = %.f, # of items: %d\n", W, n);
-
-    int seed = 1;
-    Itemset *items = init_itemset(n, seed);
+    printf("max capacity: W = %.f, # of items: %d\n", max_weight, n);
     print_itemset(items);
 
-    double total = solve(items, W);
+    double total = solve(items, max_weight);
 
     printf("----\nbest solution:\n");
     printf("value: %4.1f\n", total);
-    for (int i = 0; i < n; ++i)
-        if (items->flag[i] == 1)
-            printf("item: %d  weight %5.1f  value %5.1f\n", i, items->item[i].weight, items->item[i].value);
 
     free_itemset(items);
     return 0;
@@ -102,7 +132,6 @@ int main(int argc, char **argv)
 Itemset *init_itemset(int number, int seed)
 {
     Itemset *list = (Itemset *)malloc(sizeof(Itemset));
-
     Item *item = (Item *)malloc(sizeof(Item) * number);
 
     srand(seed);
@@ -118,7 +147,6 @@ Itemset *init_itemset(int number, int seed)
 void free_itemset(Itemset *list)
 {
     free(list->item);
-    free(list->flag);
     free(list);
 }
 
@@ -133,18 +161,17 @@ void print_itemset(const Itemset *list)
     printf("----\n");
 }
 
-double solve(Itemset *list, double capacity)
+double solve(const Itemset *list, double capacity)
 {
-    list->flag = (unsigned char *)calloc(list->number, sizeof(unsigned char));
-    double max_value = search(0, list, capacity, 0.0, 0.0);
-
+    unsigned char *flags = (unsigned char *)calloc(list->number, sizeof(unsigned char));
+    double max_value = search(0, list, capacity, flags, 0.0, 0.0);
+    free(flags);
     return max_value;
 }
 
-double search(int index, Itemset *list, double capacity, double sum_v, double sum_w)
+double search(int index, const Itemset *list, double capacity, unsigned char *flags, double sum_v, double sum_w)
 {
     int max_index = list->number;
-    unsigned char *flags = list->flag;
     assert(index >= 0 && sum_v >= 0 && sum_w >= 0);
     if (index == max_index)
     {
@@ -167,23 +194,14 @@ double search(int index, Itemset *list, double capacity, double sum_v, double su
     }
 
     flags[index] = 0;
-    const double v0 = search(index + 1, list, capacity, sum_v, sum_w);
+    const double v0 = search(index + 1, list, capacity, flags, sum_v, sum_w);
 
     flags[index] = 1;
     double v1;
     if (sum_w + list->item[index].weight > capacity)
         v1 = 0;
     else
-        v1 = search(index + 1, list, capacity, sum_v + list->item[index].value, sum_w + list->item[index].weight);
+        v1 = search(index + 1, list, capacity, flags, sum_v + list->item[index].value, sum_w + list->item[index].weight);
 
-    if (v0 > v1)
-    {
-        flags[index] = 0;
-        return v0;
-    }
-    else
-    {
-        flags[index] = 1;
-        return v1;
-    }
+    return (v0 > v1) ? v0 : v1;
 }

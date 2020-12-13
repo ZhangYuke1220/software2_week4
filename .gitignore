@@ -1,3 +1,5 @@
+*
+
 # Prerequisites
 *.d
 
@@ -50,3 +52,12 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# Unignore
+!knapsack1.c
+!helloworld1.c
+!tsp1.c
+!calc_magicnumber.c
+!fibo.c
+!write_binary.c
+!README.md

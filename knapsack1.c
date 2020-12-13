@@ -1,219 +1,189 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <math.h>
 #include <assert.h>
-#include <unistd.h>
-#include <errno.h> // strtol のエラー判定用
+#include <string.h>
+#include <errno.h>
 
-// 町の構造体（今回は2次元座標）を定義
-typedef struct
+typedef struct item
 {
-    int x;
-    int y;
-} City;
+    double value;
+    double weight;
+} Item;
 
-// 描画用
-typedef struct
+typedef struct itemset
 {
-    int width;
-    int height;
-    char **dot;
-} Map;
+    int number;
+    Item *item;
+    unsigned char *flag;
+} Itemset;
 
-// 整数最大値をとる関数
-int max(const int a, const int b)
+Itemset *init_itemset(int number, int seed);
+void free_itemset(Itemset *list);
+Itemset *load_itemset(char *filename);
+void print_itemset(const Itemset *list);
+void save_itemset(char *filename);
+double solve(Itemset *list, double capacity);
+double search(int index, Itemset *list, double capacity, double sum_v, double sum_w);
+int load_int(const char *argvalue);
+double load_double(const char *argvalue);
+
+int load_int(const char *argvalue)
 {
-    return (a > b) ? a : b;
-}
-
-// プロトタイプ宣言
-// draw_line: 町の間を線で結ぶ
-// draw_route: routeでの巡回順を元に移動経路を線で結ぶ
-// plot_cities: 描画する
-// distance: 2地点間の距離を計算
-// solve(): TSPをといて距離を返す/ 引数route に巡回順を格納
-
-void draw_line(Map map, City a, City b);
-void draw_route(Map map, City *city, int n, const int *route);
-void plot_cities(FILE *fp, Map map, City *city, int n, const int *route);
-double distance(City a, City b);
-double solve(const City *city, int n, int *route, int *visited);
-Map init_map(const int width, const int height);
-void free_map_dot(Map m);
-City *load_cities(const char *filename, int *n);
-int *permutation_route(int *list);
-
-Map init_map(const int width, const int height)
-{
-    char **dot = (char **)malloc(width * sizeof(char *));
-    char *tmp = (char *)malloc(width * height * sizeof(char));
-    for (int i = 0; i < width; i++)
-        dot[i] = tmp + i * height;
-    return (Map){.width = width, .height = height, .dot = dot};
-}
-void free_map_dot(Map m)
-{
-    free(m.dot[0]);
-    free(m.dot);
-}
-
-City *load_cities(const char *filename, int *n)
-{
-    City *city;
-    FILE *fp;
-    if ((fp = fopen(filename, "rb")) == NULL)
+    long nl;
+    char *e;
+    errno = 0;
+    nl = strtol(argvalue, &e, 10);
+    if (errno == ERANGE)
     {
-        fprintf(stderr, "%s: cannot open file.\n", filename);
+        fprintf(stderr, "%s: %s\n", argvalue, strerror(errno));
         exit(1);
     }
-    fread(n, sizeof(int), 1, fp);
-    city = (City *)malloc(sizeof(City) * *n);
-    for (int i = 0; i < *n; i++)
+    if (*e != '\0')
     {
-        fread(&city[i].x, sizeof(int), 1, fp);
-        fread(&city[i].y, sizeof(int), 1, fp);
+        fprintf(stderr, "%s: an irregular character '%c' is detected.\n", argvalue, *e);
+        exit(1);
     }
-    fclose(fp);
-    return city;
+    return (int)nl;
 }
+
+double load_double(const char *argvalue)
+{
+    double ret;
+    char *e;
+    errno = 0;
+    ret = strtod(argvalue, &e);
+    if (errno == ERANGE)
+    {
+        fprintf(stderr, "%s: %s\n", argvalue, strerror(errno));
+        exit(1);
+    }
+    if (*e != '\0')
+    {
+        fprintf(stderr, "%s: an irregular character '%c' is detected.\n", argvalue, *e);
+        exit(1);
+    }
+    return ret;
+}
+
 int main(int argc, char **argv)
 {
-    // const による定数定義
-    const int width = 70;
-    const int height = 40;
-    const int max_cities = 100;
-
-    Map map = init_map(width, height);
-
-    FILE *fp = stdout; // とりあえず描画先は標準出力としておく
-    if (argc != 2)
+    if (argc != 3)
     {
-        fprintf(stderr, "Usage: %s <city file>\n", argv[0]);
+        fprintf(stderr, "usage: %s <the number of items (int)> <max capacity (double)>\n", argv[0]);
         exit(1);
     }
-    int n;
 
-    City *city = load_cities(argv[1], &n);
-    assert(n > 1 && n <= max_cities); // さすがに都市数100は厳しいので
+    const int max_items = 100;
 
-    // 町の初期配置を表示
-    plot_cities(fp, map, city, n, NULL);
-    sleep(1);
+    const int n = load_int(argv[1]);
+    assert(n <= max_items);
 
-    // 訪れる順序を記録する配列を設定
-    int *route = (int *)calloc(n, sizeof(int));
-    // 訪れた町を記録するフラグ
-    int *visited = (int *)calloc(n, sizeof(int));
+    const double W = load_double(argv[2]);
+    assert(W >= 0.0);
 
-    const double d = solve(city, n, route, visited);
-    plot_cities(fp, map, city, n, route);
-    printf("total distance = %f\n", d);
-    for (int i = 0; i < n; i++)
-    {
-        printf("%d -> ", route[i]);
-    }
-    printf("0\n");
+    printf("max capacity: W = %.f, # of items: %d\n", W, n);
 
-    // 動的確保した環境ではfreeをする
-    free(route);
-    free(visited);
-    free(city);
+    int seed = 1;
+    Itemset *items = init_itemset(n, seed);
+    print_itemset(items);
 
+    double total = solve(items, W);
+
+    printf("----\nbest solution:\n");
+    printf("value: %4.1f\n", total);
+    for (int i = 0; i < n; ++i)
+        if (items->flag[i] == 1)
+            printf("item: %d  weight %5.1f  value %5.1f\n", i, items->item[i].weight, items->item[i].value);
+
+    free_itemset(items);
     return 0;
 }
 
-// 繋がっている都市間に線を引く
-void draw_line(Map map, City a, City b)
+Itemset *init_itemset(int number, int seed)
 {
-    const int n = max(abs(a.x - b.x), abs(a.y - b.y));
-    for (int i = 1; i <= n; i++)
+    Itemset *list = (Itemset *)malloc(sizeof(Itemset));
+
+    Item *item = (Item *)malloc(sizeof(Item) * number);
+
+    srand(seed);
+    for (int i = 0; i < number; i++)
     {
-        const int x = a.x + i * (b.x - a.x) / n;
-        const int y = a.y + i * (b.y - a.y) / n;
-        if (map.dot[x][y] == ' ')
-            map.dot[x][y] = '*';
+        item[i].value = 0.1 * (rand() % 200);
+        item[i].weight = 0.1 * (rand() % 200 + 1);
     }
+    *list = (Itemset){.number = number, .item = item};
+    return list;
 }
 
-void draw_route(Map map, City *city, int n, const int *route)
+void free_itemset(Itemset *list)
 {
-    if (route == NULL)
-        return;
-
-    for (int i = 0; i < n; i++)
-    {
-        const int c0 = route[i];
-        const int c1 = route[(i + 1) % n]; // n は 0に戻る必要あり
-        draw_line(map, city[c0], city[c1]);
-    }
+    free(list->item);
+    free(list->flag);
+    free(list);
 }
 
-void plot_cities(FILE *fp, Map map, City *city, int n, const int *route)
+void print_itemset(const Itemset *list)
 {
-    fprintf(fp, "----------\n");
-
-    memset(map.dot[0], ' ', map.width * map.height);
-
-    // 町のみ番号付きでプロットする
+    int n = list->number;
+    const char *format = "v[%d] = %4.1f, v[%d] = %4.1f\n";
     for (int i = 0; i < n; i++)
     {
-        char buf[100];
-        sprintf(buf, "C_%d", i);
-        for (int j = 0; j < strlen(buf); j++)
+        printf(format, i, list->item[i].value, i, list->item[i].weight);
+    }
+    printf("----\n");
+}
+
+double solve(Itemset *list, double capacity)
+{
+    list->flag = (unsigned char *)calloc(list->number, sizeof(unsigned char));
+    double max_value = search(0, list, capacity, 0.0, 0.0);
+
+    return max_value;
+}
+
+double search(int index, Itemset *list, double capacity, double sum_v, double sum_w)
+{
+    int max_index = list->number;
+    unsigned char *flags = list->flag;
+    assert(index >= 0 && sum_v >= 0 && sum_w >= 0);
+    if (index == max_index)
+    {
+        const char *format_ok = ", total_value = %5.1f, total_weight = %5.1f\n";
+        const char *format_ng = ", total_value = %5.1f, total_weight = %5.1f NG\n";
+        for (int i = 0; i < max_index; i++)
         {
-            const int x = city[i].x + j;
-            const int y = city[i].y;
-            map.dot[x][y] = buf[j];
+            printf("%d", flags[i]);
+        }
+        if (sum_w < capacity)
+        {
+            printf(format_ok, sum_v, sum_w);
+            return sum_v;
+        }
+        else
+        {
+            printf(format_ng, sum_v, sum_w);
+            return 0;
         }
     }
 
-    draw_route(map, city, n, route);
+    flags[index] = 0;
+    const double v0 = search(index + 1, list, capacity, sum_v, sum_w);
 
-    for (int y = 0; y < map.height; y++)
+    flags[index] = 1;
+    double v1;
+    if (sum_w + list->item[index].weight > capacity)
+        v1 = 0;
+    else
+        v1 = search(index + 1, list, capacity, sum_v + list->item[index].value, sum_w + list->item[index].weight);
+
+    if (v0 > v1)
     {
-        for (int x = 0; x < map.width; x++)
-        {
-            const char c = map.dot[x][y];
-            fputc(c, fp);
-        }
-        fputc('\n', fp);
+        flags[index] = 0;
+        return v0;
     }
-    fflush(fp);
-}
-
-double distance(City a, City b)
-{
-    const double dx = a.x - b.x;
-    const double dy = a.y - b.y;
-    return sqrt(dx * dx + dy * dy);
-}
-
-double solve(const City *city, int n, int *route, int *visited)
-{
-    // 以下はとりあえずダミー。ここに探索プログラムを実装する
-    // 現状は町の番号順のルートを回っているだけ
-    // 実際は再帰的に探索して、組み合わせが膨大になる。
-    route[0] = 0; // 循環した結果を避けるため、常に0番目からスタート
-    visited[0] = 1;
-    for (int i = 0; i < n; i++)
+    else
     {
-        route[i] = i;
-        visited[i] = 1; // 訪問済みかチェック
+        flags[index] = 1;
+        return v1;
     }
-
-    // トータルの巡回距離を計算する
-    // 実際には再帰の末尾で計算することになる
-    double sum_d = 0;
-    for (int i = 0; i < n; i++)
-    {
-        const int c0 = route[i];
-        const int c1 = route[(i + 1) % n]; // nは0に戻る
-        sum_d += distance(city[c0], city[c1]);
-    }
-    return sum_d;
-}
-
-int *permutation_route(int *list)
-{
 }

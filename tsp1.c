@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <unistd.h>
 #include <errno.h>
+#include <time.h>
 
 typedef struct
 {
@@ -19,6 +20,13 @@ typedef struct
     char **dot;
 } Map;
 
+typedef struct
+{
+    int *route;
+    double distance;
+} Answer;
+
+
 int max(const int a, const int b)
 {
     return (a > b) ? a : b;
@@ -28,11 +36,18 @@ void draw_line(Map map, City a, City b);
 void draw_route(Map map, City *city, int n, const int *route);
 void plot_cities(FILE *fp, Map map, City *city, int n, const int *route);
 double distance(City a, City b);
-double solve(const City *city, int n, int *route, int *visited);
+
+
 Map init_map(const int width, const int height);
 void free_map_dot(Map m);
 City *load_cities(const char *filename, int *n);
-int *permutation_route(int *list);
+
+Answer solve(City *city, int n,  int m, int route[m][n]);
+void swap(int *list, int i, int j);
+double total_distance(City *city, int *route, int n);
+Answer hillclimb(City *city, int n, int *route);
+void init_random_route(int *route, int n);
+void copy_list(int *list1, int *list2, int n);
 
 Map init_map(const int width, const int height)
 {
@@ -74,10 +89,11 @@ int main(int argc, char **argv)
     const int width = 70;
     const int height = 40;
     const int max_cities = 100;
+    const int random_route_number = 10;
 
     Map map = init_map(width, height);
 
-    FILE *fp = stdout; // とりあえず描画先は標準出力としておく
+    FILE *fp = stdout;
     if (argc != 2)
     {
         fprintf(stderr, "Usage: %s <city file>\n", argv[0]);
@@ -86,35 +102,27 @@ int main(int argc, char **argv)
     int n;
 
     City *city = load_cities(argv[1], &n);
-    assert(n > 1 && n <= max_cities); // さすがに都市数100は厳しいので
+    assert(n > 1 && n <= max_cities);
 
-    // 町の初期配置を表示
     plot_cities(fp, map, city, n, NULL);
     sleep(1);
 
-    // 訪れる順序を記録する配列を設定
-    int *route = (int *)calloc(n, sizeof(int));
-    // 訪れた町を記録するフラグ
-    int *visited = (int *)calloc(n, sizeof(int));
+    int route[random_route_number][n];
 
-    const double d = solve(city, n, route, visited);
-    plot_cities(fp, map, city, n, route);
-    printf("total distance = %f\n", d);
+    Answer ans = solve(city, n, random_route_number, route);
+    plot_cities(fp, map, city, n, ans.route);
+    printf("total distance = %f\n", ans.distance);
     for (int i = 0; i < n; i++)
     {
-        printf("%d -> ", route[i]);
+        printf("%d -> ", ans.route[i]);
     }
     printf("0\n");
 
-    // 動的確保した環境ではfreeをする
-    free(route);
-    free(visited);
     free(city);
 
     return 0;
 }
 
-// 繋がっている都市間に線を引く
 void draw_line(Map map, City a, City b)
 {
     const int n = max(abs(a.x - b.x), abs(a.y - b.y));
@@ -135,7 +143,7 @@ void draw_route(Map map, City *city, int n, const int *route)
     for (int i = 0; i < n; i++)
     {
         const int c0 = route[i];
-        const int c1 = route[(i + 1) % n]; // n は 0に戻る必要あり
+        const int c1 = route[(i + 1) % n];
         draw_line(map, city[c0], city[c1]);
     }
 }
@@ -146,7 +154,6 @@ void plot_cities(FILE *fp, Map map, City *city, int n, const int *route)
 
     memset(map.dot[0], ' ', map.width * map.height);
 
-    // 町のみ番号付きでプロットする
     for (int i = 0; i < n; i++)
     {
         char buf[100];
@@ -180,116 +187,93 @@ double distance(City a, City b)
     return sqrt(dx * dx + dy * dy);
 }
 
-/*double solve(const City *city, int n, int *route, int *visited)
+Answer solve(City *city, int n, int m, int route[m][n])
 {
-    // 以下はとりあえずダミー。ここに探索プログラムを実装する
-    // 現状は町の番号順のルートを回っているだけ
-    // 実際は再帰的に探索して、組み合わせが膨大になる。
-    route[0] = 0; // 循環した結果を避けるため、常に0番目からスタート
-    visited[0] = 1;
-    for (int i = 0; i < n; i++)
+    double distance = 1.0E5;
+    Answer ans;
+
+    for (int i=0; i<m; ++i)
     {
-        route[i] = i;
-        visited[i] = 1; // 訪問済みかチェック
+        init_random_route(route[i], n);
+        ans = hillclimb(city, n, route[i]);
+        if (distance < ans.distance)
+        {
+            ans.distance = distance;
+            copy_list(ans.route, route[i], n);
+        }
     }
 
-    // トータルの巡回距離を計算する
-    // 実際には再帰の末尾で計算することになる
-    double sum_d = 0;
-    for (int i = 0; i < n; i++)
-    {
-        const int c0 = route[i];
-        const int c1 = route[(i + 1) % n]; // nは0に戻る
-        sum_d += distance(city[c0], city[c1]);
-    }
-    return sum_d;
-}*/
-
-typedef struct ans
-{
-    double dist;
-    int *route;
-} Answer;
-
-Answer search(const City *city, int n, int *route, int *visited);
-
-double solve(const City *city, int n, int *route, int *visited)
-{
-    route[0] = 0; // 循環した結果を避けるため、常に0番目からスタート
-    visited[0] = 1;
-
-    Answer ans = search(city, n, route, visited);
-
-    memcpy(route, ans.route, sizeof(int) * n);
-    free(ans.route);
-    return ans.dist;
+    return ans;
 }
 
-Answer search(const City *city, int n, int *route, int *visited)
+void init_random_route(int *route, int n)
 {
-    static double mindis = 10000000000;
-    int start = 0;
-    double cum_dis = 0;
-    // 訪問した個数を数える
-    int c0 = route[0];
-    for (int i = 1; i < n; i++)
+    int count = 0;
+    int random;
+    //srand(time(NULL));
+    while (count < n)
     {
-        if (!route[i])
-        {
-            start = i;
-            break;
-        }
-        else
-        {
-            int c1 = route[i];
-            cum_dis += distance(city[c0], city[c1]);
-            c0 = c1;
-        }
+        label :
+        random = rand() % n;
+        for (int i=0; i<count; ++i)
+            if (random == route[i])
+                goto label;
+        route[count] = random;
+        count++;
     }
-    // 全て訪問したケース（ここが再帰の終端条件）
-    if (start == 0)
-    {
-        double sum_d = cum_dis + distance(city[c0], city[0]);
-        int *retarg = (int *)malloc(sizeof(int) * n);
-        memcpy(retarg, route, sizeof(int) * n);
-        if (sum_d < mindis)
-            mindis = sum_d;
-        return (Answer){.dist = sum_d, .route = retarg};
-    }
+    for (int i=0; i<count; ++i)
+        printf("%d ", route[i]);
 
-    // 特定の分岐における最小の巡回経路を調べる
-    Answer min = {.dist = 10000000000, .route = NULL};
-    for (int i = 1; i < n; i++)
-    {
-        // 未訪問なら訪れる
-        if (!visited[i])
+    printf("\n");
+}
+
+void swap(int *list, int i, int j)
+{
+    int *tmp;
+
+    *tmp = list[i];
+    list[i] = list[j];
+    list[j] = *tmp;
+}
+
+void copy_list(int *list1, int *list2, int n)
+{
+    for (int i=0; i<n; i++)
+        list1[i] = list2[i];
+}
+
+double total_distance(City *city, int *route, int n)
+{
+    double total = 0.0;
+
+    for(int i=1; i<n; ++i)
+        total += distance(city[route[i]], city[route[i-1]]);
+    total += distance(city[route[0]], city[route[n-1]]);
+    printf("%f\n", total);
+
+    return total;
+}
+
+Answer hillclimb(City *city, int n, int *route)
+{
+    double distance = total_distance(city, route, n);
+    Answer *ans = malloc(sizeof(int) * n + sizeof(double));
+    ans->distance = 1.0E5;
+    ans->route = (int *)malloc(sizeof(int) * n);
+    for (int i=1; i<n-1; ++i)
+        for (int j=i+1; j<n; ++j)
         {
-            if (i == 2 && !visited[1])
-                continue; // 逆順の巡回経路を抑制
-
-            if (cum_dis + distance(city[route[start - 1]], city[i]) > mindis)
-                continue;
-
-            route[start] = i;
-            visited[i] = 1;
-
-            Answer tmp = search(city, n, route, visited);
-
-            // 最小の巡回経路かどうか確認
-            if (tmp.dist < min.dist)
+            swap(route, i, j);
+            for (int k=0; k<n; ++k)
+                printf("%d ", route[k]);
+            printf("\n");
+            distance = total_distance(city, route, n);
+            if (distance < ans->distance)
             {
-                free(min.route);
-                min = tmp;
+                ans->distance = distance;
+                copy_list(ans->route, route, n);
             }
-            else
-            {
-                free(tmp.route);
-            }
-
-            route[start] = 0;
-            visited[i] = 0;
         }
-    }
 
-    return min;
+    return *ans;
 }

@@ -7,6 +7,7 @@
 typedef struct item
 {
     int arrange;
+    double ratio;
     double value;
     double weight;
 } Item;
@@ -125,6 +126,7 @@ Itemset *init_itemset(int number, int seed)
         item[i].arrange = i+1;
         item[i].value = 0.1 * (rand() % 200);
         item[i].weight = 0.1 * (rand() % 200 + 1);
+        item[i].ratio = item[i].value / item[i].weight;
     }
     *list = (Itemset){.number = number, .item = item};
     return list;
@@ -139,11 +141,9 @@ void free_itemset(Itemset *list)
 void print_itemset(Itemset *list)
 {
     int n = list->number;
-    const char *format = "No.%d v[%d] = %4.1f, w[%d] = %4.1f\n";
+    const char *format = "No.%d v[%d] = %4.1f, w[%d] = %4.1f, r[%d] = %4.1f\n";
     for (int i = 0; i < n; i++)
-    {
-        printf(format, list->item[i].arrange, i, list->item[i].value, i, list->item[i].weight);
-    }
+        printf(format, list->item[i].arrange, i, list->item[i].value, i, list->item[i].weight, i, list->item[i].ratio);
     printf("----\n");
 }
 
@@ -202,16 +202,16 @@ void quick_sort(Itemset *itemset, int low, int high)
         return;
     while (low < high)
     {
-        while (low < high && pivot.value <= itemset->item[high].value)
+        while (low < high && pivot.ratio <= itemset->item[high].ratio)
             --high;
-        if (pivot.value > itemset->item[high].value)
+        if (pivot.ratio > itemset->item[high].ratio)
         {
             swap(&itemset->item[low], &itemset->item[high]);
             ++low;
         }
-        while (low < high && pivot.value >= itemset->item[low].value)
+        while (low < high && pivot.ratio >= itemset->item[low].ratio)
             ++low;
-        if (pivot.value < itemset->item[low].value)
+        if (pivot.ratio < itemset->item[low].ratio)
         {
             swap(&itemset->item[low], &itemset->item[high]);
             --high;

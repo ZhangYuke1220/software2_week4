@@ -42,7 +42,7 @@ Map init_map(const int width, const int height);
 void free_map_dot(Map m);
 City *load_cities(const char *filename, int *n);
 
-Answer solve(City *city, int n,  int m, int route[m][n]);
+Answer solve(City *city, int n, int m, int *route);
 double total_distance(City *city, int *route, int n);
 Answer hillclimb(City *city, int n, int *route);
 void init_random_route(int *route, int n);
@@ -105,9 +105,8 @@ int main(int argc, char **argv)
     assert(random_route_number > 0);
 
     plot_cities(fp, map, city, n, NULL);
-    sleep(1);
 
-    int route[random_route_number][n];
+    int route[n];
 
     Answer ans = solve(city, n, random_route_number, route);
     plot_cities(fp, map, city, n, ans.route);
@@ -187,28 +186,26 @@ double distance(City a, City b)
     return sqrt(dx * dx + dy * dy);
 }
 
-Answer solve(City *city, int n, int m, int route[m][n])
+Answer solve(City *city, int n, int m, int *route)
 {
-    double distance = 1.0E5;
-    Answer ans;
+    Answer ans_dis = {.distance = 1.0E10, .route = NULL};
+    Answer pos_dis = {.distance = 1.0E10, .route = NULL};
 
     for (int i=0; i<m; ++i)
     {
-        init_random_route(route[i], n);
-        ans = hillclimb(city, n, route[i]);
-        if (distance < ans.distance)
-        {
-            ans.distance = distance;
-            copy_list(ans.route, route[i], n);
-        }
+        init_random_route(route, n);
+        pos_dis = hillclimb(city, n, route);
+        if (pos_dis.distance < ans_dis.distance)
+            ans_dis = pos_dis;
     }
-    return ans;
+    return ans_dis;
 }
 
 void init_random_route(int *route, int n)
 {
-    int count = 0;
+    int count = 1;
     int random;
+    route[0] = 0;
     srand(time(NULL));
     while (count < n)
     {

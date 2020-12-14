@@ -62,3 +62,4 @@ dkms.conf
 !write_binary.c
 !README.md
 !gencity.c
+!tsp1.md

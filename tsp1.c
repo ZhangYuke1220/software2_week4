@@ -188,6 +188,7 @@ double distance(City a, City b)
 
 Answer solve(City *city, int n, int m, int *route)
 {
+    srand(time(NULL));
     Answer ans_dis = {.distance = 1.0E10, .route = NULL};
     Answer pos_dis = {.distance = 1.0E10, .route = NULL};
 
@@ -206,7 +207,6 @@ void init_random_route(int *route, int n)
     int count = 1;
     int random;
     route[0] = 0;
-    srand(time(NULL));
     while (count < n)
     {
         label :

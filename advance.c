@@ -6,7 +6,7 @@
 
 typedef struct item
 {
-    int arrange;
+    int label;
     double ratio;
     double value;
     double weight;
@@ -57,6 +57,7 @@ int load_int(const char *argvalue)
     }
     return (int)nl;
 }
+
 double load_double(const char *argvalue)
 {
     double ret;
@@ -84,7 +85,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    const int max_items = 100;
+    const int max_items = 1.0E8;
 
     const int n = load_int(argv[1]);
     assert(n <= max_items);
@@ -123,7 +124,7 @@ Itemset *init_itemset(int number, int seed)
     srand(seed);
     for (int i = 0; i < number; i++)
     {
-        item[i].arrange = i+1;
+        item[i].label = i+1;
         item[i].value = 0.1 * (rand() % 200);
         item[i].weight = 0.1 * (rand() % 200 + 1);
         item[i].ratio = item[i].value / item[i].weight;
@@ -143,7 +144,7 @@ void print_itemset(Itemset *list)
     int n = list->number;
     const char *format = "No.%d v[%d] = %4.1f, w[%d] = %4.1f, r[%d] = %4.1f\n";
     for (int i = 0; i < n; i++)
-        printf(format, list->item[i].arrange, i, list->item[i].value, i, list->item[i].weight, i, list->item[i].ratio);
+        printf(format, list->item[i].label, i, list->item[i].value, i, list->item[i].weight, i, list->item[i].ratio);
     printf("----\n");
 }
 
@@ -166,9 +167,9 @@ Answer greedy_search(int index, Itemset *list, double capacity, unsigned char *f
     print_itemset(list);
     for (int i = list->number-1; i>=0; --i)
     {
-        if (list->item[i].weight < capacity)
+        if (list->item[i].weight <= capacity)
         {
-            choosed[i] = list->item[i].arrange;
+            choosed[i] = list->item[i].label;
             capacity -= list->item[i].weight;
             sum_w += list->item[i].weight;
             sum_v += list->item[i].value;
